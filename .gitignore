@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# YOLO cache files
+*.cache
+
+# Raw/source datasets - keep local only
+Data/Kaggle_Data/
+Data/Roboflow_Data/

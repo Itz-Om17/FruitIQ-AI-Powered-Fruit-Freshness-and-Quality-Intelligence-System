@@ -1,0 +1,13 @@
+path: D:/Fruit Detection/Final_data
+
+train: train/images
+val: val/images
+test: test/images
+
+nc: 4
+
+names:
+  0: apple
+  1: mango
+  2: banana
+  3: orange
