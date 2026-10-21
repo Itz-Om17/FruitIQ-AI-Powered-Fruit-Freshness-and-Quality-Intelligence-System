@@ -1,4 +1,65 @@
-# 🍎 Real-Time Fruit Detection and Counting Using YOLO
+# 🌿 FreshTrack AI — Intelligent Fruit Freshness, Shelf-Life & Inventory Management Platform
+
+> An AI-powered produce quality and inventory platform for fruit wholesalers, retailers, and cold-storage warehouses. It automatically detects bulk fruits, classifies freshness, estimates shelf life, and prioritizes stock to eliminate avoidable food waste.
+
+---
+
+## 💡 How the 2 AI Models & Fuzzy Logic Work Together (In Simple Terms)
+
+FreshTrack AI uses two complementary AI models and a practical **Fuzzy Logic** decision engine:
+
+1. **Model 1: The Fruit Finder (YOLO11 CNN)**
+   - **What it does:** Looks at a picture of multiple fruits (such as in a bulk crate or tray) and spots each individual fruit, drawing a bounding box around it.
+2. **Model 2: The Quality Checker (Keras MobileNetV2 CNN)**
+   - **What it does:** Takes each individual fruit spotted in Step 1, inspects it closely, classifies whether it is **Fresh**, **Semi-Fresh**, or **Rotten**, and outputs its freshness probability.
+3. **Fuzzy Logic Decision Engine:**
+   - **Part A (Shelf-Life):** Blends visual freshness probability with storage temperature (Cold, Room Temp, Warm) to calculate realistic remaining days.
+   - **Part B (Stock Prioritization):** Blends remaining shelf life, stock volume, and freshness grade into a 0–100 urgency score (First-Expired, First-Out).
+
+```
+[ Bulk Fruit Photo ] ──► [ Model 1: YOLO11 ] ──► [ Spots Each Fruit ]
+                                                       │
+                                                       ▼
+[ Stock Priority Queue ] ◄── [ Fuzzy Logic Engine ] ◄── [ Model 2: Keras ]
+```
+
+---
+
+## 📋 The Simple 4-Step Daily Workflow
+
+1. **Take a Picture:** Use your phone or webcam, or upload an image of a fruit crate.
+2. **Instant AI Grading:** The system spots all fruits, marks them with green/amber/red boxes, and calculates their freshness percentage and days left.
+3. **Save to Inventory:** Link the scan to an existing batch or quickly create a new batch.
+4. **Smart Stock Actions & FruitBot AI:** The platform prioritizes which batches to **sell first** (First-Expired, First-Out), and **FruitBot** answers questions about your inventory in plain English and gives expert tips on extending shelf life!
+
+---
+
+## 🤖 FruitBot AI Assistant (Powered by Groq LLM)
+
+FruitBot is your on-demand conversational warehouse intelligence assistant:
+- **Live Inventory Awareness:** FruitBot connects directly to your live MongoDB records to tell you which batches need urgent attention, what to sell first, and total stock volume at risk.
+- **Actionable Shelf-Life Extension Advice:** When asked how to store produce or expand shelf life, FruitBot gives clear, agronomic guidelines:
+  - **Temperature Zones:** Explains proper cooling (0°C–4°C for apples vs. 12°C–14°C for tropical fruits like bananas to prevent chilling injury and black peel).
+  - **Ethylene Separation:** Identifies high ethylene gas emitters (ripe apples and bananas) and advises keeping them physically separated from sensitive fruits (citrus, kiwis, greens) so they don't rot prematurely.
+  - **Humidity & Airflow:** Guidance on maintaining 90–95% Relative Humidity to stop shriveling, while ensuring airflow to prevent condensation and mold spores (*Botrytis*, *Penicillium*).
+  - **Sanitation & Culling:** Quick advice on immediately isolating bruised fruit to prevent rot from spreading across crates.
+- **Model:** Powered by Groq's high-speed open-source GPT model (`openai/gpt-oss-20b`).
+
+---
+
+## 🚀 Quick Start (1-Click)
+
+Double-click **`start_freshtrack.bat`** in the repository root.
+It will automatically launch:
+- **FastAPI AI Service:** `http://localhost:8000`
+- **Express Backend:** `http://localhost:5000`
+- **React Web App:** `http://localhost:5173`
+
+Log in at `http://localhost:5173` with 1 click using the **"Instant 1-Click Demo Login"** button (or email `demo@freshtrack.ai`, password `demo1234`).
+
+---
+
+# 🍎 Original Detection Model Benchmarks & Development Notes
 
 An end-to-end computer vision project for **detecting, classifying, and counting fruits in real time using a webcam**.
 

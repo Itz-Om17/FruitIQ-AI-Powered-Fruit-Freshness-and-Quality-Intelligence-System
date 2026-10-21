@@ -23,6 +23,8 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from fuzzy_shelf_life import estimate_shelf_life_fuzzy
+
 # -------------------------------------------------------------------
 # PATHS  (inference/ lives inside freshtrack/, models in ../../Models)
 # -------------------------------------------------------------------
@@ -125,16 +127,9 @@ def clean_food_name(raw: str) -> str:
     return name_map.get(raw, raw.capitalize())
 
 
-def estimate_shelf_life(fruit_type: str, p_fresh: float, state: str) -> Optional[int]:
-    if state == "ROTTEN":
-        return 0
-    key = fruit_type.lower()
-    base = DEFAULT_SHELF_LIFE
-    for k, d in AVG_SHELF_LIFE.items():
-        if k in key:
-            base = d
-            break
-    return max(0, int(round(base * p_fresh)))
+def estimate_shelf_life(fruit_type: str, p_fresh: float, state: str, temp_c: float = 12.0) -> Optional[int]:
+    """Uses Sugeno Fuzzy Logic inference to estimate remaining shelf life."""
+    return estimate_shelf_life_fuzzy(fruit_type, p_fresh, state, temp_c)
 
 
 def square_crop(rgb: np.ndarray, box: list, target: int, pad: float = 0.08) -> np.ndarray:
@@ -173,10 +168,11 @@ async def health():
 @app.post("/api/v1/inspect")
 async def inspect(
     file: UploadFile = File(...),
-    conf: float = Query(0.35, ge=0.05, le=0.95),
-    iou: float = Query(0.45, ge=0.05, le=0.95),
-    semi_margin: float = Query(0.30, ge=0.05, le=0.60),
-    batch_size: int = Query(16, ge=1, le=64)
+    conf: float = 0.35,
+    iou: float = 0.45,
+    semi_margin: float = 0.30,
+    batch_size: int = 16,
+    temp_c: float = 12.0
 ):
     """
     Full two-stage inference:
@@ -188,9 +184,9 @@ async def inspect(
         raise HTTPException(503, "Models not yet loaded. Retry in a moment.")
 
     # Validate & decode image
-    allowed = {"image/jpeg", "image/png", "image/webp"}
-    if file.content_type not in allowed:
-        raise HTTPException(400, f"Unsupported file type '{file.content_type}'. Use JPEG, PNG or WebP.")
+    allowed = {"image/jpeg", "image/jpg", "image/png", "image/webp", "application/octet-stream", "image/pjpeg"}
+    if file.content_type and file.content_type.lower() not in allowed:
+        log.warning(f"Unexpected content type '{file.content_type}', attempting image decode anyway")
 
     raw = await file.read()
     if len(raw) > 20 * 1024 * 1024:
@@ -239,7 +235,6 @@ async def inspect(
 
     # ── Stage 2: Keras batch inference ──────────────────────────────
     t_keras_start = time.perf_counter()
-    import numpy as np
 
     # Build crop batch (process in sub-batches to limit memory)
     all_keras_preds = []
@@ -256,7 +251,7 @@ async def inspect(
             p_rot, p_fr = float(pfr_np[j][0]), float(pfr_np[j][1])
             state = freshness_state(p_fr, p_rot, semi_margin)
             yolo_cls = raw_boxes[i + j]["yolo_class"]
-            days = estimate_shelf_life(yolo_cls, p_fr, state)
+            days = estimate_shelf_life(yolo_cls, p_fr, state, temp_c)
             all_keras_preds.append({
                 "keras_food_raw": food_raw,
                 "keras_food_name": clean_food_name(food_raw),
