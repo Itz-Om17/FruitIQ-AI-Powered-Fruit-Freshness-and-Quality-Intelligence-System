@@ -50,9 +50,15 @@ function calculatePriority(batch, userPreferences = {}) {
     : (batch.quantity - (batch.sold_quantity || 0) - (batch.spoiled_quantity || 0));
 
   const freshnessState = batch.freshness?.state || 'NOT_INSPECTED';
-  const remainingShelfDays = batch.remaining_shelf_life_days !== null && batch.remaining_shelf_life_days !== undefined
-    ? batch.remaining_shelf_life_days
-    : (batch.shelf_life?.estimated_days ?? null);
+  let remainingShelfDays = null;
+  if (batch.remaining_shelf_life_days !== null && batch.remaining_shelf_life_days !== undefined) {
+    remainingShelfDays = batch.remaining_shelf_life_days;
+  } else if (batch.shelf_life?.estimated_expiry) {
+    const diff = new Date(batch.shelf_life.estimated_expiry) - new Date();
+    remainingShelfDays = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  } else if (batch.shelf_life?.estimated_days !== undefined && batch.shelf_life?.estimated_days !== null) {
+    remainingShelfDays = batch.shelf_life.estimated_days;
+  }
 
   const reasons = [];
 
@@ -132,7 +138,7 @@ function calculatePriority(batch, userPreferences = {}) {
   if (remainingShelfDays <= 0) {
     score = Math.max(score, 99);
   } else if (remainingShelfDays <= 1) {
-    score = Math.max(score, 90);
+    score = Math.max(score, 92);
   } else if (remainingShelfDays <= warningDays) {
     score = Math.max(score, 75);
   }
@@ -185,8 +191,68 @@ function calculatePriority(batch, userPreferences = {}) {
   };
 }
 
+/**
+ * Dynamically syncs and recalculates batch priorities for active batches.
+ * Updates MongoDB documents when priority score or level shifts due to
+ * expiring shelf life or inventory movements.
+ */
+async function syncBatchPriorities(userId, userPreferences = {}, force = false) {
+  const Batch = require('../models/Batch');
+  const { triggerBatchNotifications } = require('./notificationService');
+
+  const activeBatches = await Batch.find({
+    user: userId,
+    status: { $in: ['active', 'low_stock'] }
+  });
+
+  const bulkOps = [];
+  const updatedBatches = [];
+
+  for (const batch of activeBatches) {
+    const freshPriority = calculatePriority(batch, userPreferences);
+    const prev = batch.priority || {};
+
+    const changed = force || (
+      prev.level !== freshPriority.level ||
+      prev.score !== freshPriority.score ||
+      prev.reason !== freshPriority.reason
+    );
+
+    if (changed) {
+      batch.priority = freshPriority;
+      bulkOps.push({
+        updateOne: {
+          filter: { _id: batch._id },
+          update: { $set: { priority: freshPriority } }
+        }
+      });
+      updatedBatches.push(batch);
+
+      // Trigger alerts if priority escalated to urgent
+      if (freshPriority.level === 'urgent' && prev.level !== 'urgent') {
+        try {
+          await triggerBatchNotifications(batch, userPreferences);
+        } catch (e) {
+          console.error('Failed to trigger alert on priority sync:', e);
+        }
+      }
+    }
+  }
+
+  if (bulkOps.length > 0) {
+    await Batch.bulkWrite(bulkOps);
+  }
+
+  return {
+    totalChecked: activeBatches.length,
+    updatedCount: bulkOps.length,
+    updatedBatches
+  };
+}
+
 module.exports = {
   calculatePriority,
+  syncBatchPriorities,
   fuzzifyShelfLife,
   fuzzifyQuantity
 };

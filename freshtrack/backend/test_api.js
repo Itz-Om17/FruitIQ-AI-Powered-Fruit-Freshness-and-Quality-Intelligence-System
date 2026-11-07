@@ -97,6 +97,51 @@ it('should boost priority score for high volume at risk (>100kg)', () => {
   assert.ok(res.reason.includes('volume'));
 });
 
+it('should escalate priority as shelf life decreases over time', () => {
+  const baseBatch = {
+    quantity: 80,
+    unit: 'kg',
+    freshness: { state: 'FRESH', avg_freshness_pct: 85 }
+  };
+
+  // Day 0: 14 days remaining -> Normal priority
+  const p14 = calculatePriority({ ...baseBatch, remaining_shelf_life_days: 14 });
+  assert.strictEqual(p14.level, 'normal');
+
+  // Day 10: 4 days remaining -> Sell first
+  const p4 = calculatePriority({ ...baseBatch, remaining_shelf_life_days: 4 });
+  assert.strictEqual(p4.level, 'sell_first');
+
+  // Day 12: 2 days remaining -> Sell first
+  const p2 = calculatePriority({ ...baseBatch, remaining_shelf_life_days: 2 });
+  assert.strictEqual(p2.level, 'sell_first');
+
+  // Day 13: 1 day remaining -> Urgent
+  const p1 = calculatePriority({ ...baseBatch, remaining_shelf_life_days: 1 });
+  assert.strictEqual(p1.level, 'urgent');
+  assert.ok(p1.score >= 92);
+
+  // Day 14: 0 days remaining (Expired) -> Urgent
+  const p0 = calculatePriority({ ...baseBatch, remaining_shelf_life_days: 0 });
+  assert.strictEqual(p0.level, 'urgent');
+  assert.ok(p0.score >= 99);
+});
+
+it('should derive remaining shelf life from estimated_expiry if virtual property not present', () => {
+  // Expiry in 18 hours (<= 1 day remaining)
+  const batch = {
+    quantity: 60,
+    unit: 'kg',
+    freshness: { state: 'FRESH', avg_freshness_pct: 80 },
+    shelf_life: {
+      estimated_expiry: new Date(Date.now() + 18 * 60 * 60 * 1000)
+    }
+  };
+  const res = calculatePriority(batch);
+  assert.strictEqual(res.level, 'urgent');
+  assert.ok(res.score >= 92);
+});
+
 // 2. Shelf Life Heuristic Model Tests
 console.log('\n--- Test Suite 2: Shelf-Life Heuristic Contracts ---');
 

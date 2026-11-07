@@ -7,6 +7,7 @@
 const Batch = require('../models/Batch');
 const Inspection = require('../models/Inspection');
 const StockMovement = require('../models/StockMovement');
+const { syncBatchPriorities } = require('../services/prioritizationService');
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
@@ -64,6 +65,9 @@ exports.askFruitBot = async (req, res, next) => {
     }
 
     const query = message.trim();
+
+    // Sync active priorities with current shelf life before RAG assembly
+    await syncBatchPriorities(userId, req.user?.preferences);
 
     // 1. Retrieve live inventory data for RAG context
     const [activeBatches, recentInspections, spoiledMovements] = await Promise.all([

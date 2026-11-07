@@ -20,7 +20,9 @@ export const Prioritization: React.FC = () => {
   const navigate = useNavigate();
   const [batches, setBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [recalculating, setRecalculating] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>('all');
+  const [notificationMsg, setNotificationMsg] = useState<string>('');
 
   const fetchPriorityBatches = async () => {
     try {
@@ -31,6 +33,21 @@ export const Prioritization: React.FC = () => {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRecalculate = async () => {
+    try {
+      setRecalculating(true);
+      const res = await api.post('/batches/recalculate-priorities');
+      await fetchPriorityBatches();
+      setNotificationMsg(res.data.message || 'Priorities updated based on latest shelf life');
+      setTimeout(() => setNotificationMsg(''), 4000);
+    } catch (err) {
+      console.error(err);
+      fetchPriorityBatches();
+    } finally {
+      setRecalculating(false);
     }
   };
 
@@ -70,13 +87,21 @@ export const Prioritization: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={fetchPriorityBatches}
-          className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all self-start md:self-auto"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          <span>Recalculate Priorities</span>
-        </button>
+        <div className="flex items-center gap-3 self-start md:self-auto">
+          {notificationMsg && (
+            <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
+              ✓ {notificationMsg}
+            </span>
+          )}
+          <button
+            onClick={handleRecalculate}
+            disabled={recalculating || loading}
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${recalculating || loading ? 'animate-spin' : ''}`} />
+            <span>{recalculating ? 'Recalculating…' : 'Recalculate Priorities'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Food Safety & Heuristic Disclaimer */}

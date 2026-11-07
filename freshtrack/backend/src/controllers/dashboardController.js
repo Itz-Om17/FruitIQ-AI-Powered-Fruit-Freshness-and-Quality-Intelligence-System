@@ -2,6 +2,7 @@ const Batch = require('../models/Batch');
 const Inspection = require('../models/Inspection');
 const StockMovement = require('../models/StockMovement');
 const Notification = require('../models/Notification');
+const { syncBatchPriorities } = require('../services/prioritizationService');
 
 /**
  * GET /api/dashboard
@@ -9,6 +10,9 @@ const Notification = require('../models/Notification');
 exports.getDashboard = async (req, res, next) => {
   try {
     const userId = req.userId;
+
+    // Automatically sync active batches' priority with current shelf life
+    await syncBatchPriorities(userId, req.user?.preferences);
 
     // --- Summary Metrics ---
     const [

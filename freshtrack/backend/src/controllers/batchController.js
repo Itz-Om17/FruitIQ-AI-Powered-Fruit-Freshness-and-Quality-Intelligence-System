@@ -1,7 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const Batch = require('../models/Batch');
 const StockMovement = require('../models/StockMovement');
-const { calculatePriority } = require('../services/prioritizationService');
+const { calculatePriority, syncBatchPriorities } = require('../services/prioritizationService');
 const { triggerBatchNotifications } = require('../services/notificationService');
 
 /**
@@ -63,6 +63,9 @@ exports.createBatch = async (req, res, next) => {
  */
 exports.getBatches = async (req, res, next) => {
   try {
+    // Automatically keep active batches' priority synced with declining shelf-life
+    await syncBatchPriorities(req.userId, req.user?.preferences);
+
     const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const skip = (page - 1) * limit;
@@ -106,6 +109,14 @@ exports.getBatch = async (req, res, next) => {
     }).populate('inspections');
 
     if (!batch) return res.status(404).json({ error: 'Batch not found' });
+
+    // Ensure priority reflects current shelf life
+    const freshPriority = calculatePriority(batch, req.user?.preferences);
+    if (!batch.priority || batch.priority.score !== freshPriority.score || batch.priority.level !== freshPriority.level) {
+      batch.priority = freshPriority;
+      await batch.save();
+    }
+
     res.json({ batch });
   } catch (err) {
     next(err);
@@ -120,20 +131,36 @@ exports.updateBatch = async (req, res, next) => {
     const allowed = [
       'fruit_type', 'unit', 'purchase_date', 'arrival_date',
       'supplier', 'purchase_cost', 'storage_location', 'storage_conditions',
-      'notes', 'status'
+      'notes', 'status', 'shelf_life'
     ];
     const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];
     }
 
-    const batch = await Batch.findOneAndUpdate(
-      { _id: req.params.id, user: req.userId },
-      updates,
-      { new: true, runValidators: true }
-    );
+    const batch = await Batch.findOne({ _id: req.params.id, user: req.userId });
     if (!batch) return res.status(404).json({ error: 'Batch not found' });
+
+    Object.assign(batch, updates);
+    batch.priority = calculatePriority(batch, req.user?.preferences);
+    await batch.save();
+
     res.json({ batch });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/batches/recalculate-priorities
+ */
+exports.recalculatePriorities = async (req, res, next) => {
+  try {
+    const result = await syncBatchPriorities(req.userId, req.user?.preferences, true);
+    res.json({
+      message: 'Batch priorities recalculated successfully',
+      ...result
+    });
   } catch (err) {
     next(err);
   }
@@ -191,6 +218,8 @@ exports.recordStockMovement = async (req, res, next) => {
       batch.status = 'low_stock';
     }
 
+    // Recalculate priority after stock movements
+    batch.priority = calculatePriority(batch, req.user?.preferences);
     await batch.save();
 
     const movement = await StockMovement.create({

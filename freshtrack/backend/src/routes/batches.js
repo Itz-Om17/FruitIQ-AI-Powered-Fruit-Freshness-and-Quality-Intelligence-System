@@ -7,6 +7,7 @@ router.use(auth);
 
 router.post('/', batchController.createBatch);
 router.get('/', batchController.getBatches);
+router.post('/recalculate-priorities', batchController.recalculatePriorities);
 router.get('/:id', batchController.getBatch);
 router.patch('/:id', batchController.updateBatch);
 router.post('/:id/stock-movement', batchController.recordStockMovement);
